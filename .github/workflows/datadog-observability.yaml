@@ -1,0 +1,76 @@
+name: Datadog Full Observability Template
+
+on:
+  workflow_call:
+    inputs:
+      service:
+        required: true
+        type: string
+        description: 'Nome do serviço (ex: dgp-backend)'
+      environment:
+        required: true
+        type: string
+        description: 'Ambiente (ci, staging, production)'
+      run_tests:
+        required: false
+        type: boolean
+        default: true
+      run_sast:
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  test-visibility:
+    name: Tests with CI Visibility
+    runs-on: ubuntu-latest
+    if: ${{ inputs.run_tests }}
+    env:
+      DD_SERVICE: ${{ inputs.service }}
+      DD_ENV: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Setup Datadog Test Visibility
+        uses: DataDog/test-visibility-github-action@v2
+        with:
+          languages: js
+          service: ${{ inputs.service }}
+          api_key: ${{ secrets.DD_API_KEY }}
+          site: ${{ secrets.DD_SITE }}
+
+      - run: npm test
+
+  static-analysis:
+    name: SAST + SCA
+    runs-on: ubuntu-latest
+    if: ${{ inputs.run_sast }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Datadog Static Analyzer
+        uses: DataDog/datadog-static-analyzer-github-action@v1
+        with:
+          dd_api_key: ${{ secrets.DD_API_KEY }}
+          dd_app_key: ${{ secrets.DD_APP_KEY }}
+          dd_site: ${{ secrets.DD_SITE }}
+          dd_service: ${{ inputs.service }}
+          dd_env: ci
+          cpu_count: 2
+          enable_performance_statistics: true
+
+      - name: Datadog SCA
+        uses: DataDog/datadog-sca-github-action@v1
+        with:
+          dd_api_key: ${{ secrets.DD_API_KEY }}
+          dd_app_key: ${{ secrets.DD_APP_KEY }}
+          dd_site: ${{ secrets.DD_SITE }}
+          dd_service: ${{ inputs.service }}
+          dd_env: ci
